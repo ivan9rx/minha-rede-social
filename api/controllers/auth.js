@@ -1,5 +1,6 @@
 import {db} from '../connect.js'
 import bcrypt from 'bcrypt'
+import jwt from 'jsonwebtoken'
 
 export const register = (req, res) => {
     const {username, email, senha, confirmarSenha} = req.body
@@ -47,4 +48,49 @@ export const register = (req, res) => {
 
 
 
-export const login = (req, res) => {}
+export const login = (req, res) => {
+    const {email, senha} = req.body
+
+    db.query(
+        "SELECT * FROM user WHERE email = ?",[email], async (error, data) => {
+            if(error) {
+                console.log(error)
+                return res.status(500).json({msg:"aconteceu algum error no servidor, tente novamente"})
+            }
+
+            if(data.length === 0) {
+                return res.status(404).json({msg:"usuario não encontrado!"})
+            }else {
+                const user = data[0]
+                const checarSenha = await bcrypt.compare(senha, user.senha)
+
+                if(!checarSenha) {
+                    return res.status(422).json({msg: "senha incorreta"})
+                }
+
+                try {
+                    const refreshToken = jwt.sign({
+                        exp: Math.floor(Date.now()/1000) + 24 * 60 * 60,
+                        id: user.senha
+                    },
+                    process.env.REFRESH,
+                    {algorithm: "HS256"}
+                    )
+                    const token = jwt.sign({
+                        exp: Math.floor(Date.now()/1000) + 3600,
+                        id: user.senha
+                    },
+                    process.env.token,
+                    {algorithm: "HS256"}
+                    )
+
+                    res.status(200).json({msg:"usuário logado com sucesso!", token, refreshToken})
+                } catch(err) {
+                    console.log(err)
+                    return res.status(500).json({msg:"ocorreu um erro no servidor, tente novamente"})
+                }
+                
+            }
+        }
+    )
+}
